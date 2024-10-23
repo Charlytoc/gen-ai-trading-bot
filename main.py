@@ -69,11 +69,9 @@ async def dashboard():
         ]
     )
 
-    # Load the Jinja template
     with open("templates/dashboard.html", "r") as file:
         template = file.read()
 
-    # Convert DataFrames to HTML
     trades_html = trades_df.to_html(index=False)
     failed_trades_html = failed_trades_df.to_html(index=False)
 

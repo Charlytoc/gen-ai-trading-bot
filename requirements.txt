@@ -22,6 +22,7 @@ packaging==24.1
 pandas==2.2.3
 pandas_ta==0.3.14b0
 pluggy==0.13.1
+psycopg2-binary==2.9.10
 py==1.11.0
 pydantic==2.9.2
 pydantic_core==2.23.4
