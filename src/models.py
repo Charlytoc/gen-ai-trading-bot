@@ -1,11 +1,17 @@
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker
+
 from datetime import datetime
 import os
+
 if os.environ.get("DATABASE_URL"):
-    DATABASE_URL = os.environ["DATABASE_URL"]  
+    DATABASE_URL = os.environ["DATABASE_URL"]
+  
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://")
 else:
-    DATABASE_URL = "sqlite:///./trades.db"  
+    DATABASE_URL = "sqlite:///./trades.db"
+
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

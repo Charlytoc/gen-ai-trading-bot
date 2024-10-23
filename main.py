@@ -1,6 +1,5 @@
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
-from sqlalchemy import create_engine
 
 import os
 import uvicorn
@@ -18,19 +17,10 @@ load_dotenv()
 
 app = FastAPI()
 
-if os.environ.get("DATABASE_URL"):
-    DATABASE_URL = os.environ["DATABASE_URL"]  # Use Heroku's PostgreSQL URL
-else:
-    DATABASE_URL = "sqlite:///./trades.db"  # Fallback to SQLite for local development
-
-engine = create_engine(DATABASE_URL)
-
-
 
 access_token = os.environ.get("OANDA_API_KEY")
 accountID = os.environ.get("OANDA_ACCOUNT_ID")
 units = int(os.getenv('TRADE_UNITS', 3000)) 
-
 
 
 
