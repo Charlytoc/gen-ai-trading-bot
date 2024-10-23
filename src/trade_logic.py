@@ -1,23 +1,24 @@
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime
-from sqlalchemy.orm import declarative_base
-from sqlalchemy.orm import sessionmaker
-import pandas as pd
+
 import os
-import pandas_ta as ta
-from apscheduler.schedulers.blocking import BlockingScheduler
-import uvicorn
+import pandas as pd
+
+import oandapyV20.endpoints.trades as trades
+import pandas_ta as ta 
+from oanda_candles import Pair, Gran, CandleClient
 from oandapyV20 import API
 import oandapyV20.endpoints.orders as orders
-import oandapyV20.endpoints.trades as trades
 from oandapyV20.contrib.requests import MarketOrderRequest
-from oanda_candles import Pair, Gran, CandleClient
+from oandapyV20.contrib.requests import TakeProfitDetails, StopLossDetails
+
+from dotenv import load_dotenv
+from src.models import  log_failed_trade, log_trade
+
+load_dotenv()
 
 
 access_token = os.environ.get("OANDA_API_KEY")
 accountID = os.environ.get("OANDA_ACCOUNT_ID")
-
+units = int(os.getenv('TRADE_UNITS', 3000)) 
 
 def ema_signal(df, current_candle, backcandles):
     df_slice = df.reset_index().copy()
@@ -50,8 +51,6 @@ def total_signal(df, current_candle, backcandles):
 
         return 1
     return 0
-
-
 
 
 def get_candles(n):
@@ -110,3 +109,56 @@ def get_candles_frame(n):
 
     return dfstream
 
+
+def trading_job():
+    print("Running trading job")
+    dfstream = get_candles_frame(70)
+    signal = total_signal(dfstream, len(dfstream) - 1, 7)
+
+    slatr = 1.1 * dfstream.ATR.iloc[-1]
+    TPSLRatio = 1.5
+    max_spread = 16e-5
+
+    candle = get_candles(1)[-1]
+    candle_open_bid = float(str(candle.bid.o))
+    candle_open_ask = float(str(candle.ask.o))
+    spread = candle_open_ask - candle_open_bid
+
+    SLBuy = candle_open_bid - slatr - spread
+    SLSell = candle_open_ask + slatr + spread
+
+    TPBuy = candle_open_ask + slatr * TPSLRatio + spread
+    TPSell = candle_open_bid - slatr * TPSLRatio - spread
+
+    client = API(access_token=access_token)
+
+    # Sell
+    if signal == 1 and count_opened_trades() == 0 and spread < max_spread:
+        mo = MarketOrderRequest(
+            instrument="EUR_USD",
+            units=-units,
+            takeProfitOnFill=TakeProfitDetails(price=TPSell).data,
+            stopLossOnFill=StopLossDetails(price=SLSell).data,
+        )
+        r = orders.OrderCreate(accountID, data=mo.data)
+        rv = client.request(r)
+        print(rv)
+        log_trade(signal, "Sell", True, candle_open_bid)
+    else:
+        reason = "Conditions not met for Sell trade."
+        log_failed_trade(signal, "Sell", reason, candle_open_bid)
+
+    if signal == 2 and count_opened_trades() == 0 and spread < max_spread:
+        mo = MarketOrderRequest(
+            instrument="EUR_USD",
+            units=units,
+            takeProfitOnFill=TakeProfitDetails(price=TPBuy).data,
+            stopLossOnFill=StopLossDetails(price=SLBuy).data,
+        )
+        r = orders.OrderCreate(accountID, data=mo.data)
+        rv = client.request(r)
+        print(rv)
+        log_trade(signal, "Buy", True, candle_open_ask)
+    else:
+        reason = "Conditions not met for Buy trade."
+        log_failed_trade(signal, "Buy", reason, candle_open_ask)

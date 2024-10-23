@@ -8,15 +8,11 @@ import pandas as pd
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 
-from oandapyV20 import API
-import oandapyV20.endpoints.orders as orders
-from oandapyV20.contrib.requests import MarketOrderRequest
-from oandapyV20.contrib.requests import TakeProfitDetails, StopLossDetails
 
 from dotenv import load_dotenv
-from threading import Thread  # Importar Thread
-from src.models import Trade, FailedTrade, SessionLocal, log_failed_trade, log_trade
-from src.trade_logic import get_candles_frame, total_signal, count_opened_trades, get_candles
+from threading import Thread  
+from src.models import Trade, FailedTrade, SessionLocal
+from src.trade_logic import trading_job
 
 load_dotenv()
 
@@ -89,78 +85,27 @@ async def dashboard():
     return template
 
 
-def trading_job():
-    print("Running trading job")
-    dfstream = get_candles_frame(70)
-    signal = total_signal(dfstream, len(dfstream) - 1, 7)
-
-    slatr = 1.1 * dfstream.ATR.iloc[-1]
-    TPSLRatio = 1.5
-    max_spread = 16e-5
-
-    candle = get_candles(1)[-1]
-    candle_open_bid = float(str(candle.bid.o))
-    candle_open_ask = float(str(candle.ask.o))
-    spread = candle_open_ask - candle_open_bid
-
-    SLBuy = candle_open_bid - slatr - spread
-    SLSell = candle_open_ask + slatr + spread
-
-    TPBuy = candle_open_ask + slatr * TPSLRatio + spread
-    TPSell = candle_open_bid - slatr * TPSLRatio - spread
-
-    client = API(access_token=access_token)
-
-    # Sell
-    if signal == 1 and count_opened_trades() == 0 and spread < max_spread:
-        mo = MarketOrderRequest(
-            instrument="EUR_USD",
-            units=-units,
-            takeProfitOnFill=TakeProfitDetails(price=TPSell).data,
-            stopLossOnFill=StopLossDetails(price=SLSell).data,
-        )
-        r = orders.OrderCreate(accountID, data=mo.data)
-        rv = client.request(r)
-        print(rv)
-        log_trade(signal, "Sell", True, candle_open_bid)
-    else:
-        reason = "Conditions not met for Sell trade."
-        log_failed_trade(signal, "Sell", reason, candle_open_bid)
-
-    if signal == 2 and count_opened_trades() == 0 and spread < max_spread:
-        mo = MarketOrderRequest(
-            instrument="EUR_USD",
-            units=units,
-            takeProfitOnFill=TakeProfitDetails(price=TPBuy).data,
-            stopLossOnFill=StopLossDetails(price=SLBuy).data,
-        )
-        r = orders.OrderCreate(accountID, data=mo.data)
-        rv = client.request(r)
-        print(rv)
-        log_trade(signal, "Buy", True, candle_open_ask)
-    else:
-        reason = "Conditions not met for Buy trade."
-        log_failed_trade(signal, "Buy", reason, candle_open_ask)
 
 
-def start_scheduler():
-    print("Running scheduler")
-    scheduler = BlockingScheduler()
-    scheduler.add_job(
-        trading_job,
-        "cron",
-        day_of_week="mon-fri",
-        hour="00-23",
-        minute="1, 6, 11, 16, 21, 26, 31, 36, 41, 46, 51, 56",
-        start_date="2023-12-08 12:00:00",
-        timezone="America/Chicago",
-    )
-    scheduler.start()
+
+# def start_scheduler():
+#     print("Running scheduler")
+#     scheduler = BlockingScheduler()
+#     scheduler.add_job(
+#         trading_job,
+#         "cron",
+#         day_of_week="mon-fri",
+#         hour="00-23",
+#         minute="1, 6, 11, 16, 21, 26, 31, 36, 41, 46, 51, 56",
+#         start_date="2023-12-08 12:00:00",
+#         timezone="America/Chicago",
+#     )
+#     scheduler.start()
 
 
 if __name__ == "__main__":
 
-    scheduler_thread = Thread(target=start_scheduler)
-    scheduler_thread.start()
+    # scheduler_thread = Thread(target=start_scheduler)
+    # scheduler_thread.start()
 
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
