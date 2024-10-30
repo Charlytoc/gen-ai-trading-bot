@@ -37,20 +37,18 @@ def ema_signal(df, current_candle, backcandles):
 
 
 def total_signal(df, current_candle, backcandles):
-    if (
-        ema_signal(df, current_candle, backcandles) == 2
-        and df.Close[current_candle] <= df["BBL_15_1.5"][current_candle]
-        # and df.RSI[current_candle]<60
-    ):
-        return 2
-    if (
-        ema_signal(df, current_candle, backcandles) == 1
-        and df.Close[current_candle] >= df["BBU_15_1.5"][current_candle]
-        # and df.RSI[current_candle]>40
-    ):
+    # Temporarily disable strict condition checking for testing purposes
+    ema_condition = ema_signal(df, current_candle, backcandles)
 
-        return 1
-    return 0
+    # For buy: Allow buy signal when EMA fast crosses above EMA slow AND price is below upper band
+    if ema_condition == 2 or (df.Close[current_candle] <= df["BBU_15_1.5"][current_candle]):
+        return 2  # Buy signal
+    
+    # For sell: Allow sell signal when EMA fast crosses below EMA slow AND price is above lower band
+    if ema_condition == 1 or (df.Close[current_candle] >= df["BBL_15_1.5"][current_candle]):
+        return 1  # Sell signal
+
+    return 0  
 
 
 def get_candles(n):
@@ -115,6 +113,8 @@ def trading_job():
     dfstream = get_candles_frame(70)
     signal = total_signal(dfstream, len(dfstream) - 1, 7)
 
+    print(f"Signal received: {signal}")  # Debugging output
+   
     slatr = 1.1 * dfstream.ATR.iloc[-1]
     TPSLRatio = 1.5
     max_spread = 16e-5
@@ -122,7 +122,10 @@ def trading_job():
     candle = get_candles(1)[-1]
     candle_open_bid = float(str(candle.bid.o))
     candle_open_ask = float(str(candle.ask.o))
+    
     spread = candle_open_ask - candle_open_bid
+    
+    print(f"Spread: {spread}, SLATR: {slatr}, Candle Open Bid: {candle_open_bid}, Candle Open Ask: {candle_open_ask}") 
 
     SLBuy = candle_open_bid - slatr - spread
     SLSell = candle_open_ask + slatr + spread
